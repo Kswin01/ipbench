@@ -16,7 +16,7 @@
  * target) so doesn't get a count.
  */
 
-#define MAX_PLUGINS 15
+#define MAX_PLUGINS 16
 
 #define IPBENCH_CLIENT 0
 #define IPBENCH_TARGET 1

@@ -1,0 +1,8 @@
+.deps
+.libs
+Makefile
+Makefile.in
+liblatencyramp.la
+liblatencyramp_la-ip.lo
+liblatencyramp_la-latency.lo
+liblatencyramp_la-raw.lo

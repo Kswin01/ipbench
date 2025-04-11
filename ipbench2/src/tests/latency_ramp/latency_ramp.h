@@ -56,6 +56,14 @@ struct latency_ramp_result {
 	uint64_t size;
 };
 
+struct latency_ramp_incremental_result {
+	uint64_t transmitted_bytes;
+	uint64_t microseconds;
+	uint64_t bps_achieved;
+	uint64_t bps_requested;
+	uint64_t size;
+};
+
 /* We marshall the result up into this structure */
 struct marshalled_result {
 	uint64_t time;

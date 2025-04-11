@@ -49,6 +49,12 @@ struct layer_opts raw_layer =
 
 static struct latency_ramp_result result;
 
+/* List of results for each of the ramp increments. */
+// TODO: Find a good size for this.
+
+static uint32_t num_ramps = 0;
+static struct latency_ramp_incremental_result ramp_results[256];
+
 /* Globals and their defaults */
 static int fd;
 static uint64_t samples = SAMPLES;      /* Samples required. A sample is one 
@@ -243,7 +249,9 @@ measure_latency_ramp(int sock, uint64_t bps, uint64_t size,
 
 	uint64_t send_eagains=0, recv_eagains=0, broken_sends=0, broken_recvs=0;
 
+	uint64_t last_phase_end = 0;
 	uint64_t next_phase_start = 0;
+	uint64_t received_packets_checkpoint = 0;
 
 	int r, s;
 	/* initialisation */
@@ -260,6 +268,7 @@ measure_latency_ramp(int sock, uint64_t bps, uint64_t size,
 	start_time = time_stamp();
 	uint64_t persistant_start_time = start_time;
 	warmup_time = start_time + usec_to_tick(warmup);
+	last_phase_end = warmup_time;
 	next_phase_start = warmup_time + usec_to_tick(US_PER_S * ramp_time_increment);
 	cooldown_time = end_time = 0; /* calculated later */
 	cooldown = usec_to_tick(cooldown);
@@ -279,14 +288,25 @@ measure_latency_ramp(int sock, uint64_t bps, uint64_t size,
 	while((now = time_stamp()) && (end_time == 0 || now < end_time)) {
 
 		if (now >= next_phase_start) {
+			// Calculate the received throughput
+			ramp_results[num_ramps].size = size;
+			// @kwinter: We need to be calculating these receieved packets per ramp.
+			// Just keep a running count of what it was at the last phase boundary.
+			ramp_results[num_ramps].transmitted_bytes = (received_packets - received_packets_checkpoint) * size;
+			ramp_results[num_ramps].microseconds = tick_to_usec(now - last_phase_end);
+			ramp_results[num_ramps].bps_achieved =
+				(8 * (received_packets - received_packets_checkpoint) * size * US_PER_S) / ramp_results[num_ramps].microseconds;
+			ramp_results[num_ramps].bps_requested = bps;
+			num_ramps++;
+			received_packets_checkpoint = received_packets;
 			dbprintf("We are increasing in send rate by %dMbps to %dMbps over interval: %d(s).\n", ramp_bps_increment/1000000, bps/1000000, ramp_time_increment);
-			// Increase troughput by 50Mbps every 5 seconds
 			bps += ramp_bps_increment;
 			send_rate = (double)bps / (8.0 * US_PER_S * size * tick_rate);
 			// Reset predicted sends and sends
 			predicted_sends = 0;
 			sends = 0;
 			start_time = now;
+			last_phase_end = now;
 			next_phase_start = now + usec_to_tick(US_PER_S * ramp_time_increment);
 		}
 
@@ -375,6 +395,7 @@ measure_latency_ramp(int sock, uint64_t bps, uint64_t size,
 	/* now clag the important results into the results
 	 * structure */
 
+	/* @kwinter: We want to do this for every ramp up? */
 	result.size = size;
 	result.transmitted_bytes = received_packets * size;
 	result.microseconds = tick_to_usec(cooldown_time - warmup_time);
@@ -428,6 +449,14 @@ measure_latency_ramp(int sock, uint64_t bps, uint64_t size,
 	}
 	dbprintf("Finished writing our latency_ramp output to file!\n");
 	fclose(fd);
+
+	/* Loop through and print all of the ramp results. */
+	for (int i = 0; i < num_ramps; i++) {
+		dbprintf("\n");
+		dbprintf("transferred %"PRId64" bytes in %"PRId64" microseconds\n",
+			 ramp_results[i].transmitted_bytes, ramp_results[i].microseconds);
+		dbprintf("Requested %"PRId64" bps, achieved %"PRId64" bps\n", ramp_results[i].bps_requested, ramp_results[i].bps_achieved);
+	}
 	return 0;
 }
 

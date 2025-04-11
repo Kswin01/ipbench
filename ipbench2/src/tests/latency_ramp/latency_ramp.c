@@ -435,10 +435,12 @@ measure_latency_ramp(int sock, uint64_t bps, uint64_t size,
 
 
 #endif
+	char *second_dump_file = malloc(strlen(dump_dir));
+	memcpy(second_dump_file, dump_dir, strlen(dump_dir));
 	char *dump_file = strcat(dump_dir, "/latency_ramp_output.csv");
 	FILE* fd = fopen(dump_file, "w+");
 	if (fd == NULL) {
-		dbprintf("We got a null file descriptor\n");
+		dbprintf("We got a null file descriptor for latency output\n");
 		return 0;
 	}
 
@@ -450,13 +452,23 @@ measure_latency_ramp(int sock, uint64_t bps, uint64_t size,
 	dbprintf("Finished writing our latency_ramp output to file!\n");
 	fclose(fd);
 
+	char *bps_dump_file = strcat(second_dump_file, "/latency_ramp_bps.txt");
+	fd = fopen(bps_dump_file, "w+");
+	if (fd == NULL) {
+		dbprintf("We got a null file descriptor for bps dump file\n");
+		return 0;
+	}
 	/* Loop through and print all of the ramp results. */
 	for (int i = 0; i < num_ramps; i++) {
-		dbprintf("\n");
-		dbprintf("transferred %"PRId64" bytes in %"PRId64" microseconds\n",
+		fprintf(fd, "\n");
+		fprintf(fd, "transferred %"PRId64" bytes in %"PRId64" microseconds\n",
 			 ramp_results[i].transmitted_bytes, ramp_results[i].microseconds);
-		dbprintf("Requested %"PRId64" bps, achieved %"PRId64" bps\n", ramp_results[i].bps_requested, ramp_results[i].bps_achieved);
+		fprintf(fd, "Requested %"PRId64" bps, achieved %"PRId64" bps\n", ramp_results[i].bps_requested, ramp_results[i].bps_achieved);
 	}
+
+	dbprintf("Finished writing our ramp bps to file!\n");
+	fclose(fd);
+
 	return 0;
 }
 
@@ -670,6 +682,8 @@ int latency_ramp_marshall(char **data, int *size, double running_time)
 	tosend->throughput_requested = htonll(bps);
 	tosend->throughput_achieved  = htonll(result.bps);
 	tosend->throughput_sent = htonll(result.bps_sent);
+
+	// @kwinter: We want to marshall all our incremental ramp results here and send it over to the ipbench client.
 
 	*data = (char *)tosend;
 	*size = sizeof(struct marshalled_result) + (sizeof(uint64_t) * samples);
